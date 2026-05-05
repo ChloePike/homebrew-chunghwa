@@ -1,7 +1,7 @@
 cask "chunghwa" do
-  version "0.1.0"
-  sha256 arm:   "143d40e8105cc1c9a94dd84af9ac9697c3b2f116d2adf8754af46f0bbe15c571",
-         intel: "2ed6d8403a08ae679a8e8718838950366017885f5f2c2b741eaaed1fc974a2e8"
+  version "0.2.0"
+  sha256 arm:   "6df6cac3995c52ce0b0c01c9769fde3b4be0cdd425edf63a90bba1c8450fa8a5",
+         intel: "71a7b8a78261fecb9bbc662d5ff3f4c672fffd8393fb68911283397fa508796f"
 
   arch arm: "arm64", intel: "x86_64"
 
