@@ -1,0 +1,90 @@
+name: Bump cask to latest upstream release
+
+# Polls the upstream repo for the latest tag, reads the matching DMG
+# SHA256s, and writes them into Casks/chunghwa.rb. Commits + pushes
+# only when something actually changed.
+#
+# Triggers:
+#   - hourly cron (so a new upstream release is picked up within an hour)
+#   - manual workflow_dispatch (run from Actions UI any time)
+
+on:
+  schedule:
+    - cron: "30 * * * *"   # 30 past every hour
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve latest upstream version + DMG SHA256s
+        id: latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM: ChloePike/chunghwa
+        run: |
+          set -euo pipefail
+          tag=$(gh release view --repo "$UPSTREAM" --json tagName -q .tagName)
+          version="${tag#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # Pull SHA256SUMS.txt and parse arm64 + x86_64 lines.
+          tmp=$(mktemp)
+          gh release download "$tag" --repo "$UPSTREAM" \
+              --pattern SHA256SUMS.txt --output "$tmp"
+          arm_sha=$(grep -E "ChungHwa-${version}-arm64\.dmg$"   "$tmp" | awk '{print $1}')
+          int_sha=$(grep -E "ChungHwa-${version}-x86_64\.dmg$"  "$tmp" | awk '{print $1}')
+          if [[ -z "$arm_sha" || -z "$int_sha" ]]; then
+            echo "could not parse SHA256SUMS.txt for $version" >&2
+            cat "$tmp" >&2
+            exit 1
+          fi
+          echo "arm_sha=$arm_sha"   >> "$GITHUB_OUTPUT"
+          echo "int_sha=$int_sha"   >> "$GITHUB_OUTPUT"
+
+      - name: Patch Casks/chunghwa.rb
+        env:
+          NEW_VERSION: ${{ steps.latest.outputs.version }}
+          NEW_ARM:     ${{ steps.latest.outputs.arm_sha }}
+          NEW_INT:     ${{ steps.latest.outputs.int_sha }}
+        run: |
+          set -euo pipefail
+          cask=Casks/chunghwa.rb
+
+          # version line
+          sed -E -i "s|^  version \".*\"$|  version \"$NEW_VERSION\"|" "$cask"
+          # sha256 arm:  "..."  ->  always re-emit the two-line block
+          python3 - "$cask" "$NEW_ARM" "$NEW_INT" <<'PY'
+          import sys, re
+          p, arm, intel = sys.argv[1], sys.argv[2], sys.argv[3]
+          src = open(p).read()
+          new = re.sub(
+              r"sha256 arm:\s+\"[0-9a-f]+\",\s*\n\s*intel:\s+\"[0-9a-f]+\"",
+              f'sha256 arm:   "{arm}",\n         intel: "{intel}"',
+              src, count=1,
+          )
+          open(p, "w").write(new)
+          PY
+
+          echo "--- diff ---"
+          git --no-pager diff -- "$cask" | head -40
+
+      - name: Commit + push if changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Casks/chunghwa.rb; then
+            echo "no change — already at latest"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          version=$(grep -E '^\s*version "' Casks/chunghwa.rb | head -1 | sed -E 's/.*"(.*)".*/\1/')
+          git add Casks/chunghwa.rb
+          git commit -m "chunghwa $version"
+          git push

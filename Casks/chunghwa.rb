@@ -12,6 +12,13 @@ cask "chunghwa" do
 
   depends_on macos: ">= :tahoe"
 
+  # `brew livecheck chunghwa` and `brew bump-cask-pr` use this to follow
+  # the upstream tag scheme.
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
   app "ChungHwa.app"
 
   # ChungHwa is unsigned and unnotarized. Strip the quarantine xattr so
