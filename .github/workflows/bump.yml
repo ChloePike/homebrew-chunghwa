@@ -35,7 +35,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
           # Pull SHA256SUMS.txt and parse arm64 + x86_64 lines.
-          tmp=$(mktemp)
+          tmp=$(mktemp -u)
           gh release download "$tag" --repo "$UPSTREAM" \
               --pattern SHA256SUMS.txt --output "$tmp"
           arm_sha=$(grep -E "ChungHwa-${version}-arm64\.dmg$"   "$tmp" | awk '{print $1}')
